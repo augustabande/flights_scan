@@ -34,15 +34,19 @@ def main():
 
     flights: list[Flight] = []
 
-    # --- Skypicker (fonte primaria, no API key) ---
-    from src.searchers.kiwi import SkypickerSearcher
-    logger.info("Skypicker: ricerca in corso...")
-    try:
-        skypicker_results = SkypickerSearcher().search()
-        logger.info("Skypicker: trovati %d voli.", len(skypicker_results))
-        flights.extend(skypicker_results)
-    except Exception as exc:
-        logger.error("Skypicker: errore: %s", exc)
+    # --- SerpAPI Google Flights (fonte primaria) ---
+    serpapi_key = os.getenv("SERPAPI_KEY")
+    if serpapi_key:
+        from src.searchers.kiwi import SerpApiSearcher
+        logger.info("SerpAPI: ricerca in corso...")
+        try:
+            results = SerpApiSearcher(serpapi_key).search()
+            logger.info("SerpAPI: trovati %d voli.", len(results))
+            flights.extend(results)
+        except Exception as exc:
+            logger.error("SerpAPI: errore: %s", exc)
+    else:
+        logger.warning("SERPAPI_KEY non impostata.")
 
 
     # --- Amadeus (fonte secondaria) ---

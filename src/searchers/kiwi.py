@@ -1,37 +1,21 @@
-"""
-Skypicker public API — ex backend di Kiwi.com, senza API key.
-Endpoint stabile e funzionante senza registrazione.
-Documentazione non ufficiale: il parametro partner=picky è obbligatorio.
-"""
 import logging
 import requests
-from datetime import datetime, timezone
+from datetime import datetime
 
 from src.models import Flight, Segment
 
 logger = logging.getLogger(__name__)
 
-SKYPICKER_BASE = "https://api.skypicker.com/flights"
+SERPAPI_BASE = "https://serpapi.com/search.json"
 ORIGINS = ["CDG", "ORY"]
 DESTINATION = "FUE"
-SEARCH_DATE = "28/12/2026"
 TARGET_DATE = "2026-12-28"
 MIN_DEP_HOUR = 12
-MAX_STOPS = 1
-
-# Headers per ridurre probabilità di rate-limit
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0 Safari/537.36"
-    ),
-    "Accept": "application/json",
-}
 
 
-class SkypickerSearcher:
-    """Cerca voli tramite l'API pubblica di Skypicker (Kiwi), senza API key."""
+class SerpApiSearcher:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
 
     def search(self) -> list[Flight]:
         flights: list[Flight] = []
@@ -39,35 +23,29 @@ class SkypickerSearcher:
             try:
                 results = self._fetch(origin)
                 flights.extend(results)
-                logger.info("Skypicker: %s → %s: %d voli", origin, DESTINATION, len(results))
+                logger.info("SerpAPI: %s → %s: %d voli", origin, DESTINATION, len(results))
             except Exception as exc:
-                logger.error("Skypicker: errore per %s → %s: %s", origin, DESTINATION, exc)
+                logger.error("SerpAPI: errore per %s → %s: %s", origin, DESTINATION, exc)
         return sorted(flights, key=lambda f: f.price)
 
     def _fetch(self, origin: str) -> list[Flight]:
-        base = (
-            f"{SKYPICKER_BASE}"
-            f"?flyFrom={origin}&to={DESTINATION}"
-            f"&dateFrom={SEARCH_DATE}&dateTo={SEARCH_DATE}"
-        )
         params = {
-            "typeFlight": "oneway",
-            "adults": 1,
-            "maxstopovers": MAX_STOPS,
-            "curr": "EUR",
-            "limit": 200,
-            "sort": "price",
-            "asc": 1,
-            "partner": "picky",
-            "partner_market": "es",
-            "dtimefrom": "12:00",
+            "engine": "google_flights",
+            "departure_id": origin,
+            "arrival_id": DESTINATION,
+            "outbound_date": TARGET_DATE,
+            "currency": "EUR",
+            "hl": "en",
+            "type": "2",    # one way
+            "stops": "2",   # max 1 stop (0=any, 1=nonstop, 2=1 stop or fewer)
+            "api_key": self.api_key,
         }
-        resp = requests.get(base, headers=_HEADERS, params=params, timeout=25)
+        resp = requests.get(SERPAPI_BASE, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
         flights: list[Flight] = []
-        for item in data.get("data", []):
+        for item in data.get("best_flights", []) + data.get("other_flights", []):
             flight = self._parse_item(item, origin)
             if flight:
                 flights.append(flight)
@@ -75,40 +53,41 @@ class SkypickerSearcher:
 
     def _parse_item(self, item: dict, origin: str) -> Flight | None:
         try:
-            dep_ts = item["dTime"]
-            arr_ts = item["aTime"]
-            dep_dt = datetime.fromtimestamp(dep_ts, tz=timezone.utc).astimezone()
-            arr_dt = datetime.fromtimestamp(arr_ts, tz=timezone.utc).astimezone()
-
-            # Partenza >= 12:00 locale
-            if dep_dt.hour < MIN_DEP_HOUR:
+            segs = item.get("flights", [])
+            if not segs:
                 return None
 
-            # Arrivo stesso giorno
+            first = segs[0]
+            last = segs[-1]
+
+            dep_str = first["departure_airport"]["time"]   # "2026-12-28 13:00"
+            arr_str = last["arrival_airport"]["time"]
+
+            dep_dt = datetime.strptime(dep_str, "%Y-%m-%d %H:%M")
+            arr_dt = datetime.strptime(arr_str, "%Y-%m-%d %H:%M")
+
+            if dep_dt.hour < MIN_DEP_HOUR:
+                return None
             if arr_dt.strftime("%Y-%m-%d") != TARGET_DATE:
                 return None
 
-            stops = len(item.get("route", [])) - 1
-            if stops > MAX_STOPS:
-                return None
-
-            duration = self._parse_duration(item.get("duration", {}).get("total", 0))
+            stops = len(segs) - 1
+            total_min = item.get("total_duration", 0)
+            duration = f"{total_min // 60}h{total_min % 60:02d}m"
 
             segments = []
-            for leg in item.get("route", []):
-                leg_dep = datetime.fromtimestamp(leg["dTime"], tz=timezone.utc).astimezone()
-                leg_arr = datetime.fromtimestamp(leg["aTime"], tz=timezone.utc).astimezone()
+            for s in segs:
                 segments.append(Segment(
-                    origin=leg.get("flyFrom", ""),
-                    destination=leg.get("flyTo", ""),
-                    departure=leg_dep.strftime("%H:%M"),
-                    arrival=leg_arr.strftime("%H:%M"),
-                    carrier=leg.get("airline", ""),
-                    flight_number=leg.get("flight_no", ""),
+                    origin=s["departure_airport"]["id"],
+                    destination=s["arrival_airport"]["id"],
+                    departure=datetime.strptime(s["departure_airport"]["time"], "%Y-%m-%d %H:%M").strftime("%H:%M"),
+                    arrival=datetime.strptime(s["arrival_airport"]["time"], "%Y-%m-%d %H:%M").strftime("%H:%M"),
+                    carrier=s.get("airline", ""),
+                    flight_number=s.get("flight_number", ""),
                 ))
 
-            airlines = item.get("airlines", [])
-            carrier = ", ".join(airlines) if airlines else "N/D"
+            airlines = list({s.get("airline", "") for s in segs})
+            carrier = ", ".join(a for a in airlines if a)
 
             return Flight(
                 origin=origin,
@@ -122,17 +101,9 @@ class SkypickerSearcher:
                 currency="EUR",
                 carrier=carrier,
                 segments=segments,
-                booking_url=item.get("deep_link", ""),
-                source="skypicker",
+                booking_url="https://www.google.com/travel/flights",
+                source="serpapi",
             )
         except Exception as exc:
-            logger.debug("Skypicker: parsing fallito su item: %s", exc)
+            logger.debug("SerpAPI: parsing fallito: %s", exc)
             return None
-
-    @staticmethod
-    def _parse_duration(total_seconds: int) -> str:
-        if not total_seconds:
-            return "N/D"
-        h = total_seconds // 3600
-        m = (total_seconds % 3600) // 60
-        return f"{h}h{m:02d}m"
