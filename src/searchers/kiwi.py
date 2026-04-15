@@ -43,6 +43,11 @@ class SerpApiSearcher:
         resp = requests.get(SERPAPI_BASE, params=params, timeout=30)
         resp.raise_for_status()
         data = resp.json()
+        logger.info("SerpAPI raw keys: %s", list(data.keys()))
+        logger.info("SerpAPI best_flights count: %d", len(data.get("best_flights", [])))
+        logger.info("SerpAPI other_flights count: %d", len(data.get("other_flights", [])))
+        if data.get("error"):
+            logger.error("SerpAPI error: %s", data["error"])
 
         flights: list[Flight] = []
         for item in data.get("best_flights", []) + data.get("other_flights", []):
