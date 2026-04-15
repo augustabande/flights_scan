@@ -45,25 +45,24 @@ class SkypickerSearcher:
         return sorted(flights, key=lambda f: f.price)
 
     def _fetch(self, origin: str) -> list[Flight]:
+        base = (
+            f"{SKYPICKER_BASE}"
+            f"?flyFrom={origin}&to={DESTINATION}"
+            f"&dateFrom={SEARCH_DATE}&dateTo={SEARCH_DATE}"
+        )
         params = {
-            "flyFrom": origin,
-            "to": DESTINATION,
-            "dateFrom": SEARCH_DATE,
-            "dateTo": SEARCH_DATE,
             "typeFlight": "oneway",
             "adults": 1,
             "maxstopovers": MAX_STOPS,
             "curr": "EUR",
-            "limit": 200,           # max documentato
+            "limit": 200,
             "sort": "price",
             "asc": 1,
             "partner": "picky",
             "partner_market": "es",
-            "dtimefrom": "12:00",   # filtro server-side: partenza >= 12:00
+            "dtimefrom": "12:00",
         }
-        resp = requests.get(
-            SKYPICKER_BASE, headers=_HEADERS, params=params, timeout=25
-        )
+        resp = requests.get(base, headers=_HEADERS, params=params, timeout=25)
         resp.raise_for_status()
         data = resp.json()
 
