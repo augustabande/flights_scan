@@ -1,0 +1,50 @@
+name: Flight Monitor — CDG/ORY → FUE 28/12/2026
+
+on:
+  schedule:
+    # Ogni giorno alle 06:00 UTC = 07:00 CET (dicembre, UTC+1)
+    - cron: "0 6 * * *"
+
+  # Permette run manuale dalla tab Actions di GitHub
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    name: Cerca voli
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: write   # necessario per committare lo snapshot JSON
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Installa dipendenze
+        run: pip install -r requirements.txt
+
+      - name: Esegui ricerca voli
+        env:
+          KIWI_API_KEY: ${{ secrets.KIWI_API_KEY }}
+          AMADEUS_CLIENT_ID: ${{ secrets.AMADEUS_CLIENT_ID }}
+          AMADEUS_SECRET: ${{ secrets.AMADEUS_SECRET }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        run: python -m src.main
+
+      - name: Commit snapshot storico
+        run: |
+          git config user.name  "flight-monitor-bot"
+          git config user.email "bot@github-actions"
+          git add history/
+          git diff --cached --quiet || git commit -m "snapshot: $(date -u +%Y-%m-%d)"
+          git push
