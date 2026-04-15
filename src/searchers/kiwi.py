@@ -1,7 +1,7 @@
 """
-Kiwi Tequila API searcher.
-Free API key: https://tequila.kiwi.com/portal/login
-Free tier: 500 req/month — ampiamente sufficiente per uso giornaliero.
+Skypicker public API — ex backend di Kiwi.com, senza API key.
+Endpoint stabile e funzionante senza registrazione.
+Documentazione non ufficiale: il parametro partner=picky è obbligatorio.
 """
 import logging
 import requests
@@ -11,19 +11,27 @@ from src.models import Flight, Segment
 
 logger = logging.getLogger(__name__)
 
-TEQUILA_BASE = "https://api.tequila.kiwi.com/v2/search"
+SKYPICKER_BASE = "https://api.skypicker.com/flights"
 ORIGINS = ["CDG", "ORY"]
 DESTINATION = "FUE"
 SEARCH_DATE = "28/12/2026"
 TARGET_DATE = "2026-12-28"
-MIN_DEP_HOUR = 12  # partenza non prima delle 12:00
+MIN_DEP_HOUR = 12
 MAX_STOPS = 1
 
+# Headers per ridurre probabilità di rate-limit
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+}
 
-class KiwiSearcher:
-    def __init__(self, api_key: str):
-        self.api_key = api_key
-        self.headers = {"apikey": api_key}
+
+class SkypickerSearcher:
+    """Cerca voli tramite l'API pubblica di Skypicker (Kiwi), senza API key."""
 
     def search(self) -> list[Flight]:
         flights: list[Flight] = []
@@ -31,25 +39,31 @@ class KiwiSearcher:
             try:
                 results = self._fetch(origin)
                 flights.extend(results)
+                logger.info("Skypicker: %s → %s: %d voli", origin, DESTINATION, len(results))
             except Exception as exc:
-                logger.error("Kiwi: errore per %s → %s: %s", origin, DESTINATION, exc)
+                logger.error("Skypicker: errore per %s → %s: %s", origin, DESTINATION, exc)
         return sorted(flights, key=lambda f: f.price)
 
     def _fetch(self, origin: str) -> list[Flight]:
         params = {
-            "fly_from": origin,
-            "fly_to": DESTINATION,
-            "date_from": SEARCH_DATE,
-            "date_to": SEARCH_DATE,
-            "flight_type": "oneway",
+            "flyFrom": origin,
+            "to": DESTINATION,
+            "dateFrom": SEARCH_DATE,
+            "dateTo": SEARCH_DATE,
+            "typeFlight": "oneway",
             "adults": 1,
-            "max_stopovers": MAX_STOPS,
+            "maxstopovers": MAX_STOPS,
             "curr": "EUR",
-            "limit": 50,
+            "limit": 200,           # max documentato
             "sort": "price",
             "asc": 1,
+            "partner": "picky",
+            "partner_market": "es",
+            "dtimefrom": "12:00",   # filtro server-side: partenza >= 12:00
         }
-        resp = requests.get(TEQUILA_BASE, headers=self.headers, params=params, timeout=20)
+        resp = requests.get(
+            SKYPICKER_BASE, headers=_HEADERS, params=params, timeout=25
+        )
         resp.raise_for_status()
         data = resp.json()
 
@@ -79,11 +93,8 @@ class KiwiSearcher:
             if stops > MAX_STOPS:
                 return None
 
-            # Durata
-            fly_duration = item.get("fly_duration", "")
             duration = self._parse_duration(item.get("duration", {}).get("total", 0))
 
-            # Segmenti
             segments = []
             for leg in item.get("route", []):
                 leg_dep = datetime.fromtimestamp(leg["dTime"], tz=timezone.utc).astimezone()
@@ -113,10 +124,10 @@ class KiwiSearcher:
                 carrier=carrier,
                 segments=segments,
                 booking_url=item.get("deep_link", ""),
-                source="kiwi",
+                source="skypicker",
             )
         except Exception as exc:
-            logger.debug("Kiwi: parsing fallito su item: %s", exc)
+            logger.debug("Skypicker: parsing fallito su item: %s", exc)
             return None
 
     @staticmethod

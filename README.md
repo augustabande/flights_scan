@@ -6,7 +6,7 @@ Ogni mattina alle 07:00 CET ricevi una notifica push con i migliori prezzi trova
 
 ## Architettura
 
-- **Fonti dati**: Kiwi Tequila API (primaria) + Amadeus Flight Offers API (secondaria)
+- **Fonti dati**: Skypicker public API (primaria, no API key) + Amadeus Flight Offers API (secondaria)
 - **Scheduler**: GitHub Actions, cron `0 6 * * *` (07:00 CET)
 - **Notifiche**: ntfy.sh (push iOS/Android, gratuita, zero config)
 - **Storage**: snapshot JSON giornaliero in `history/` committato nel repo
@@ -22,11 +22,8 @@ cd flight-monitor
 
 ### 2. Ottieni le API key
 
-**Kiwi Tequila (obbligatoria)**
-1. Vai su https://tequila.kiwi.com/portal/login
-2. Crea un account gratuito
-3. Crea una nuova API key
-4. Free tier: 500 richieste/mese — abbondante per uso giornaliero
+**Skypicker (nessuna chiave necessaria)**
+La fonte primaria usa `api.skypicker.com` — endpoint pubblico, nessuna registrazione.
 
 **Amadeus (opzionale ma consigliata per dati aggiuntivi)**
 1. Vai su https://developers.amadeus.com
@@ -46,7 +43,6 @@ Nel tuo repository: **Settings → Secrets and variables → Actions → New rep
 
 | Secret | Valore |
 |--------|--------|
-| `KIWI_API_KEY` | La tua Kiwi API key |
 | `AMADEUS_CLIENT_ID` | (opzionale) |
 | `AMADEUS_SECRET` | (opzionale) |
 | `NTFY_TOPIC` | es: `fue-flights-k7q2m9x` |

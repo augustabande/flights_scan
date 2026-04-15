@@ -34,19 +34,16 @@ def main():
 
     flights: list[Flight] = []
 
-    # --- Kiwi (fonte primaria) ---
-    kiwi_key = os.getenv("KIWI_API_KEY")
-    if kiwi_key:
-        from src.searchers.kiwi import KiwiSearcher
-        logger.info("Kiwi: ricerca in corso...")
-        try:
-            kiwi_results = KiwiSearcher(kiwi_key).search()
-            logger.info("Kiwi: trovati %d voli.", len(kiwi_results))
-            flights.extend(kiwi_results)
-        except Exception as exc:
-            logger.error("Kiwi: errore: %s", exc)
-    else:
-        logger.warning("KIWI_API_KEY non impostata — sorgente Kiwi saltata.")
+    # --- Skypicker (fonte primaria, no API key) ---
+    from src.searchers.kiwi import SkypickerSearcher
+    logger.info("Skypicker: ricerca in corso...")
+    try:
+        skypicker_results = SkypickerSearcher().search()
+        logger.info("Skypicker: trovati %d voli.", len(skypicker_results))
+        flights.extend(skypicker_results)
+    except Exception as exc:
+        logger.error("Skypicker: errore: %s", exc)
+
 
     # --- Amadeus (fonte secondaria) ---
     amadeus_id = os.getenv("AMADEUS_CLIENT_ID")
