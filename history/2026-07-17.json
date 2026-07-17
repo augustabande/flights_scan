@@ -1,0 +1,40 @@
+{
+  "run_date": "2026-07-17",
+  "run_timestamp": "2026-07-17T08:20:27.137677Z",
+  "count": 1,
+  "best_price": 844.0,
+  "flights": [
+    {
+      "origin": "ORY",
+      "destination": "FUE",
+      "departure": "17:20",
+      "arrival": "22:45",
+      "date": "2026-12-28",
+      "duration": "6h25m",
+      "stops": 1,
+      "price": 844.0,
+      "currency": "EUR",
+      "carrier": "Iberia",
+      "segments": [
+        {
+          "origin": "ORY",
+          "destination": "MAD",
+          "departure": "17:20",
+          "arrival": "19:25",
+          "carrier": "Iberia",
+          "flight_number": "IB 578"
+        },
+        {
+          "origin": "MAD",
+          "destination": "FUE",
+          "departure": "21:00",
+          "arrival": "22:45",
+          "carrier": "Iberia",
+          "flight_number": "IB 1527"
+        }
+      ],
+      "booking_url": "https://www.google.com/travel/flights",
+      "source": "serpapi"
+    }
+  ]
+}
